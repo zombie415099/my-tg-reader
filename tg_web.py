@@ -1,5 +1,6 @@
 ﻿import asyncio
 import threading
+import queue
 import streamlit as st
 from telethon import TelegramClient, events
 
@@ -16,57 +17,70 @@ TARGET_CHATS = [
 ]
 # =====================================================================
 
-# Ініціалізація внутрішньої пам'яті для повідомлень на веб-сторінці
-if "msg_store" not in st.session_state:
-    st.session_state.msg_store = ["🔄 Сервер запущено. Очікування нових постів..."]
-
-# Конфігурація відображення сторінки
 st.set_page_config(page_title="TG Web Reader", page_icon="💬", layout="centered")
 st.title("📥 Стрічка обраних повідомлень")
 
-# Кешування клієнта Telegram, щоб він не перезапускався при кожному оновленні сторінки
+# 1. Створюємо глобальну чергу для обміну даними між потоками (кешуємо її)
 @st.cache_resource
-def get_tg_client():
-    return TelegramClient('my_telegram_session', API_ID, API_HASH)
+def get_message_queue():
+    return queue.Queue()
 
-client = get_tg_client()
+# 2. Глобальне сховище для накопичених повідомлень в рамках цієї сесії користувача
+if "msg_store" not in st.session_state:
+    st.session_state.msg_store = ["🔄 Сервер запущено. Очікування нових постів..."]
 
-@client.on(events.NewMessage)
-async def handle_new_message(event):
-    if event.chat_id in TARGET_CHATS:
-        sender = await event.get_sender()
-        sender_name = getattr(sender, 'title', getattr(sender, 'first_name', 'Канал'))
-        
-        # Форматуємо картку повідомлення
-        full_text = f"**👤 Від:** {sender_name}\n\n💬 {event.text}"
-        
-        # Додаємо повідомлення на початок списку
-        st.session_state.msg_store.append(full_text)
-        
-        # Перезавантажуємо сторінку в браузері, щоб миттєво показати новий пост
-        st.rerun()
+msg_queue = get_message_queue()
 
-async def start_tg():
-    await client.start()
-    await client.run_until_disconnected()
+# 3. Ініціалізація та запуск клієнта Telegram в окремому потоці (лише 1 раз)
+@st.cache_resource
+def start_telegram_worker():
+    client = TelegramClient('my_telegram_session', API_ID, API_HASH)
 
-def run_loop():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(start_tg())
+    @client.on(events.NewMessage)
+    async def handle_new_message(event):
+        if event.chat_id in TARGET_CHATS:
+            sender = await event.get_sender()
+            sender_name = getattr(sender, 'title', getattr(sender, 'first_name', 'Канал'))
+            full_text = f"**👤 Від:** {sender_name}\n\n💬 {event.text}"
+            
+            # БЕЗПЕЧНО додаємо в чергу замість st.session_state
+            msg_queue.put(full_text)
 
-# Запуск фонового прослуховування Telegram в окремому потоці
-if "tg_started" not in st.session_state:
-    st.session_state.tg_started = True
-    threading.Thread(target=run_loop, daemon=True).start()
+    def run_loop():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        client.start()
+        # Дозволяє коректно обробляти запити всередині потоку
+        loop.run_until_complete(client.run_until_disconnected())
 
-# Кнопка для ручного очищення стрічки новин
+    thread = threading.Thread(target=run_loop, daemon=True)
+    thread.start()
+    return client
+
+# Запускаємо фоновий потік процесу Telegram
+start_telegram_worker()
+
+# 4. Перевіряємо чергу: якщо фоновий потік щось надіслав — переміщуємо в сесію Streamlit
+new_messages_received = False
+while not msg_queue.empty():
+    try:
+        msg = msg_queue.get_nowait()
+        st.session_state.msg_store.append(msg)
+        new_messages_received = True
+    except queue.Empty:
+        break
+
+# 5. Кнопка очищення
 if st.button("🧹 Очистити стрічку"):
     st.session_state.msg_store = ["🧹 Стрічку очищено. Очікування нових повідомлень..."]
     st.rerun()
 
 st.write("---")
 
-# Виведення повідомлень на екран (нові будуть зверху)
+# 6. Виведення повідомлень
 for msg in reversed(st.session_state.msg_store):
     st.info(msg)
+
+# 7. Автоматичне оновлення сторінки (фрагменту інтерфейсу) кожні 3 секунди
+# Це замінює небезпечний st.rerun() з фонового потоку
+st.fragment(run_every=3)(lambda: None)()
