@@ -27,7 +27,7 @@ def get_message_queue():
 
 # 2. Глобальне сховище для накопичених повідомлень в рамках цієї сесії користувача
 if "msg_store" not in st.session_state:
-    st.session_state.msg_store = ["🔄 Сервер запущено. Очікування нових постів..."]
+    st.session_state.msg_store = ["🔄 Сервер запущено. В очікуванні нових постів..."]
 
 msg_queue = get_message_queue()
 
