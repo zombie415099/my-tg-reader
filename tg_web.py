@@ -3,6 +3,7 @@ import threading
 import queue
 import streamlit as st
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession  # Імпортуємо роботу з рядковими сесіями
 
 # =====================================================================
 # НАЛАШТУВАННЯ ЗАСТОСУНКУ (Ваші 9 чатів)
@@ -18,26 +19,29 @@ TARGET_CHATS = [
 # =====================================================================
 
 st.set_page_config(page_title="TG Web Reader", page_icon="💬", layout="centered")
-st.title("📥 ТА ЙОБАНА РОТ")
+st.title("📥 Стрічка обраних повідомлень")
 
-# 1. Кешуємо потокобезпечну чергу
+# Отримуємо сесію з безпечних налаштувань хостингу Streamlit
+if "TG_SESSION" in st.secrets:
+    SESSION_DATA = StringSession(st.secrets["TG_SESSION"])
+else:
+    st.error("Помилка: Не знайдено секрет TG_SESSION в налаштуваннях Streamlit Cloud!")
+    st.stop()
+
 @st.cache_resource
 def get_message_queue():
     return queue.Queue()
 
-# 2. Глобальний локальний список повідомлень сесії
 if "msg_store" not in st.session_state:
-    st.session_state.msg_store = ["🔄 РАБОТАЙ. Очікування нових постів..."]
+    st.session_state.msg_store = ["🔄 Сервер запущено. Очікування нових постів..."]
 
 msg_queue = get_message_queue()
 
-# 3. Фоновий воркер з виправленою ініціалізацією сутностей Telegram
 @st.cache_resource
 def start_telegram_worker():
-    client = TelegramClient('my_telegram_session', API_ID, API_HASH)
+    # Запускаємо клієнт через текстову сесію (без створення файлів .sqlite на сервері)
+    client = TelegramClient(SESSION_DATA, API_ID, API_HASH)
 
-    # Використовуємо вбудований фільтр `chats=TARGET_CHATS`. Це змушує
-    # Telethon автоматично валідувати ID на рівні самого Telegram API.
     @client.on(events.NewMessage(chats=TARGET_CHATS))
     async def handle_new_message(event):
         try:
@@ -53,41 +57,34 @@ def start_telegram_worker():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
+        # Запуск тепер відбудеться миттєво, без очікування вводу даних в консоль
         client.start()
         
-        # КРИТИЧНО ВАЖЛИВО: завантажуємо діалоги акаунта в пам'ять Telethon.
-        # Без цього бібліотека "наосліп" не бачить подій за цифровими ID.
         loop.run_until_complete(client.get_dialogs())
-        
         loop.run_until_complete(client.run_until_disconnected())
 
     thread = threading.Thread(target=run_loop, daemon=True)
     thread.start()
     return client
 
-# Запуск фонового процесу читання Telegram
+# Запуск фонового процесу
 start_telegram_worker()
 
-# 4. Елементи керування інтерфейсу
 if st.button("🧹 Очистити стрічку"):
     st.session_state.msg_store = ["🧹 Стрічку очищено. Очікування нових повідомлень..."]
     st.rerun()
 
 st.write("---")
 
-# 5. Динамічний фрагмент зчитування черги (Оновлюється кожні 2 секунди)
 @st.fragment(run_every=2)
 def display_feed():
-    has_updates = False
     while not msg_queue.empty():
         try:
             msg = msg_queue.get_nowait()
             st.session_state.msg_store.append(msg)
-            has_updates = True
         except queue.Empty:
             break
             
-    # Виводимо стрічку повідомлень на екран
     for msg in reversed(st.session_state.msg_store):
         st.info(msg)
 
