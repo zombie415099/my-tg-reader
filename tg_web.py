@@ -21,7 +21,7 @@ TARGET_CHATS = [
 # =====================================================================
 
 st.set_page_config(page_title="TG Web Reader", page_icon="💬", layout="centered")
-st.title("📥 Стрічка обраних повідомлень")
+st.title("📥 Збірка Всйого По троху")
 
 if "TG_SESSION" in st.secrets:
     SESSION_DATA = StringSession(st.secrets["TG_SESSION"])
@@ -34,7 +34,7 @@ def get_message_queue():
     return queue.Queue()
 
 if "msg_store" not in st.session_state:
-    st.session_state.msg_store = ["🔄 Сервер запущено. Очікування нових постів..."]
+    st.session_state.msg_store = ["🔄 Сервер запущено. почекай це перша версія. Київ тоже не за день побудували..."]
 
 msg_queue = get_message_queue()
 
@@ -88,7 +88,7 @@ def start_telegram_worker():
 start_telegram_worker()
 
 if st.button("🧹 Очистити стрічку"):
-    st.session_state.msg_store = ["🧹 Стрічку очищено. Очікування нових повідомлень..."]
+    st.session_state.msg_store = ["🧹 Стрічку очищено. А тепер ще трішки зачейкай .Якщо щось буде воно покаже ( ну по ідеї повинно..."]
     st.rerun()
 
 st.write("---")
