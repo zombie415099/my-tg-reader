@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import threading
 import queue
 import streamlit as st
@@ -18,20 +18,20 @@ TARGET_CHATS = [
 # =====================================================================
 
 st.set_page_config(page_title="TG Web Reader", page_icon="💬", layout="centered")
-st.title("📥 Стрічка обраних повідомлень")
+st.title("📥 Де ЩО ЛЕТИТЬ")
 
-# 1. Створюємо глобальну чергу для обміну даними між потоками (кешуємо її)
+# 1. Кешуємо чергу для обміну даними між потоками
 @st.cache_resource
 def get_message_queue():
     return queue.Queue()
 
-# 2. Глобальне сховище для накопичених повідомлень в рамках цієї сесії користувача
+# 2. Сховище повідомлень для поточного користувача
 if "msg_store" not in st.session_state:
-    st.session_state.msg_store = ["🔄 Сервер запущено. В очікуванні нових постів..."]
+    st.session_state.msg_store = ["🔄 Сервер запущено. Очікування нових постів..."]
 
 msg_queue = get_message_queue()
 
-# 3. Ініціалізація та запуск клієнта Telegram в окремому потоці (лише 1 раз)
+# 3. Фоновий клієнт Telegram (працює завжди в 1 екземплярі)
 @st.cache_resource
 def start_telegram_worker():
     client = TelegramClient('my_telegram_session', API_ID, API_HASH)
@@ -43,44 +43,45 @@ def start_telegram_worker():
             sender_name = getattr(sender, 'title', getattr(sender, 'first_name', 'Канал'))
             full_text = f"**👤 Від:** {sender_name}\n\n💬 {event.text}"
             
-            # БЕЗПЕЧНО додаємо в чергу замість st.session_state
+            # Кладемо повідомлення в чергу
             msg_queue.put(full_text)
 
     def run_loop():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         client.start()
-        # Дозволяє коректно обробляти запити всередині потоку
         loop.run_until_complete(client.run_until_disconnected())
 
     thread = threading.Thread(target=run_loop, daemon=True)
     thread.start()
     return client
 
-# Запускаємо фоновий потік процесу Telegram
+# Запуск фонового процесу
 start_telegram_worker()
 
-# 4. Перевіряємо чергу: якщо фоновий потік щось надіслав — переміщуємо в сесію Streamlit
-new_messages_received = False
-while not msg_queue.empty():
-    try:
-        msg = msg_queue.get_nowait()
-        st.session_state.msg_store.append(msg)
-        new_messages_received = True
-    except queue.Empty:
-        break
-
-# 5. Кнопка очищення
+# 4. Кнопка очищення стрічки
 if st.button("🧹 Очистити стрічку"):
-    st.session_state.msg_store = ["🧹 Стрічку очищено. Очікування нових повідомлень..."]
+    st.session_state.msg_store = ["🧹 Стрічку очищено. В очікуванні нових повідомлень..."]
     st.rerun()
 
 st.write("---")
 
-# 6. Виведення повідомлень
-for msg in reversed(st.session_state.msg_store):
-    st.info(msg)
+# 5. ДИНАМІЧНИЙ ФРАГМЕНТ (Оновлюється автоматично кожні 2 секунди)
+@st.fragment(run_every=2)
+def display_feed():
+    # Вигрібаємо ВСІ нові повідомлення з черги, які встигли прийти
+    has_updates = False
+    while not msg_queue.empty():
+        try:
+            msg = msg_queue.get_nowait()
+            st.session_state.msg_store.append(msg)
+            has_updates = True
+        except queue.Empty:
+            break
+            
+    # Виводимо стрічку повідомлень на екран
+    for msg in reversed(st.session_state.msg_store):
+        st.info(msg)
 
-# 7. Автоматичне оновлення сторінки (фрагменту інтерфейсу) кожні 3 секунди
-# Це замінює небезпечний st.rerun() з фонового потоку
-st.fragment(run_every=3)(lambda: None)()
+# Запускаємо відображення нашої стрічки
+display_feed()
