@@ -1,9 +1,10 @@
 import asyncio
 import threading
 import queue
+import re  # Додаємо бібліотеку для роботи з регулярними виразами
 import streamlit as st
 from telethon import TelegramClient, events
-from telethon.sessions import StringSession  # Імпортуємо роботу з рядковими сесіями
+from telethon.sessions import StringSession
 
 # =====================================================================
 # НАЛАШТУВАННЯ ЗАСТОСУНКУ (Ваші 9 чатів)
@@ -21,7 +22,6 @@ TARGET_CHATS = [
 st.set_page_config(page_title="TG Web Reader", page_icon="💬", layout="centered")
 st.title("📥 Стрічка обраних повідомлень")
 
-# Отримуємо сесію з безпечних налаштувань хостингу Streamlit
 if "TG_SESSION" in st.secrets:
     SESSION_DATA = StringSession(st.secrets["TG_SESSION"])
 else:
@@ -37,9 +37,22 @@ if "msg_store" not in st.session_state:
 
 msg_queue = get_message_queue()
 
+# --- ФУНКЦІЯ ОЧИЩЕННЯ ТЕКСТУ ВІД ПОСИЛАНЬ ---
+def clean_text(text):
+    if not text:
+        return ""
+    # 1. Видаляємо посилання типу http:// або https://
+    text = re.sub(r'https?://\S+', '', text)
+    # 2. Видаляємо внутрішні посилання Telegram типу t.me/... або tg://...
+    text = re.sub(r'(t\.me|tg://)\S+', '', text)
+    # 3. Видаляємо юзернейми та згадки каналів через @ (наприклад, @username)
+    text = re.sub(r'@\w+', '', text)
+    # 4. Прибираємо зайві пробіли та порожні рядки, які залишилися після видалення
+    text = re.sub(r'\n\s*\n+', '\n', text).strip()
+    return text
+
 @st.cache_resource
 def start_telegram_worker():
-    # Запускаємо клієнт через текстову сесію (без створення файлів .sqlite на сервері)
     client = TelegramClient(SESSION_DATA, API_ID, API_HASH)
 
     @client.on(events.NewMessage(chats=TARGET_CHATS))
@@ -48,18 +61,22 @@ def start_telegram_worker():
             sender = await event.get_sender()
             sender_name = getattr(sender, 'title', getattr(sender, 'first_name', 'Канал'))
         except Exception:
-            sender_name = "Канал (Приватний/Прихований)"
+            sender_name = "Канал"
             
-        full_text = f"**👤 Від:** {sender_name}\n\n💬 {event.text}"
+        # Очищаємо текст повідомлення від будь-яких посилань
+        cleaned_message = clean_text(event.text)
+        
+        # Якщо після очищення в пості взагалі нічого не залишилося, не додаємо його
+        if not cleaned_message:
+            return
+            
+        full_text = f"**👤 Від:** {sender_name}\n\n💬 {cleaned_message}"
         msg_queue.put(full_text)
 
     def run_loop():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
-        # Запуск тепер відбудеться миттєво, без очікування вводу даних в консоль
         client.start()
-        
         loop.run_until_complete(client.get_dialogs())
         loop.run_until_complete(client.run_until_disconnected())
 
@@ -67,7 +84,6 @@ def start_telegram_worker():
     thread.start()
     return client
 
-# Запуск фонового процесу
 start_telegram_worker()
 
 if st.button("🧹 Очистити стрічку"):
@@ -89,3 +105,4 @@ def display_feed():
         st.info(msg)
 
 display_feed()
+
