@@ -103,7 +103,7 @@ st.markdown("""
         border-radius: 12px;
     }
     </style>
-""", unsafe_allow_index=True)
+""", unsafe_allow_html=True)
 
 # Нова структура верхньої панелі (Header)
 st.markdown("<h1 class='main-title'>⚡ TG Web Reader</h1>", unsafe_allow_html=True)
@@ -155,7 +155,7 @@ def clean_text(text):
     text = re.sub(r'\n\s*\n+', '\n', text).strip()
     return text
 
-# Змінено формат повернення: тепер повертаємо словник з даними замінюючи звичайний сирий текст
+# Повертаємо структурований словник замість сирого тексту
 async def process_and_enqueue(event_or_message):
     try:
         if hasattr(event_or_message, 'get_sender'):
@@ -253,7 +253,7 @@ if "initial_load_done" not in st.session_state:
         st.fragment(run_every=2)(lambda: st.rerun())()
 
 # Створюємо зручну панель керування зверху
-col_info, col_btn = st.columns([4, 1], vertical_alignment="center")
+col_info, col_btn = st.columns([3, 1], vertical_alignment="center")
 with col_info:
     st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} год.")
 with col_btn:
@@ -271,7 +271,6 @@ def display_feed():
     while not current_queue.empty():
         try:
             msg = current_queue.get_nowait()
-            # Перевірка на унікальність тексту
             if not any(existing_msg["text"] == msg["text"] for existing_msg in st.session_state.msg_store):
                 st.session_state.msg_store.append(msg)
         except queue.Empty:
@@ -281,7 +280,7 @@ def display_feed():
         st.markdown("<div class='empty-state'>📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...</div>", unsafe_allow_html=True)
         return
 
-    # Рендеринг повідомлень у вигляді кастомних красивих HTML-карток
+    # Рендеринг повідомлень у вигляді кастомних HTML-карток
     for msg in reversed(st.session_state.msg_store):
         card_html = f"""
         <div class="msg-card">
@@ -293,7 +292,6 @@ def display_feed():
         </div>
         """
         st.markdown(card_html, unsafe_allow_html=True)
-
 
 if "initial_load_done" in st.session_state:
     display_feed()
