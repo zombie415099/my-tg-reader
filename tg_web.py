@@ -105,7 +105,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Назва застосунку на сторінці
+# Нова назва застосунку на сторінці
 st.markdown("<h1 class='main-title'>📦 Збірка Всього Потроху</h1>", unsafe_allow_html=True)
 st.markdown("<p class='sub-title'>Агрегатор повідомлень та свіжих новин у реальному часі</p>", unsafe_allow_html=True)
 
