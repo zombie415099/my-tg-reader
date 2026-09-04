@@ -192,7 +192,7 @@ def clean_old_server_history():
     now = datetime.datetime.now(timezone.utc)
     cutoff_time = now - datetime.timedelta(hours=MAX_HISTORY_HOURS)
     global_state["history_buffer"] = [
-        item for item in global_state["history_buffer"] if item >= cutoff_time
+        item for item in global_state["history_buffer"] if item[0] >= cutoff_time
     ]
 
 # --- РОБОЧИЙ ПОТОК TELEGRAM ---
@@ -233,7 +233,7 @@ def start_telegram_worker():
             formatted = await process_and_enqueue(msg)
             msg_date = msg.date or time_limit
             if formatted:
-                if not any(item["text"] == formatted["text"] for item in global_state["history_buffer"]):
+                if not any(item[1]["text"] == formatted["text"] for item in global_state["history_buffer"]):
                     global_state["history_buffer"].append((msg_date, formatted))
                     
         global_state["history_ready"] = True
@@ -255,16 +255,16 @@ start_telegram_worker()
 # --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
 if "initial_load_done" not in st.session_state:
     if global_state["history_ready"]:
-        st.session_state.msg_store = [item for item in global_state["history_buffer"]]
+        st.session_state.msg_store = [item[1] for item in global_state["history_buffer"]]
         st.session_state.initial_load_done = True
     else:
         st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
         st.fragment(run_every=2)(lambda: st.rerun())()
 
-# Панель керування зверху
-col_info, col_btn = st.columns(, vertical_alignment="center")
+# Панель керування зверху (Ось тут [0.75, 0.25] на місці!)
+col_info, col_btn = st.columns([0.75, 0.25], vertical_alignment="center")
 with col_info:
-    st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} god.")
+    st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} год.")
 with col_btn:
     if st.button("🧹 Очистити стрічку", use_container_width=True):
         st.session_state.msg_store = []
@@ -292,5 +292,12 @@ def display_feed():
     # Рендеринг повідомлень у вигляді кастомних HTML-карток
     for msg in reversed(st.session_state.msg_store):
         # Отримуємо стабільний колір індивідуально для кожного каналу
-        line_color = get_channel_color(msg['sender'])
-        # Формуємо HTML-карткуcard_html = f"""👤 {msg['sender']}🕒 {msg['time']}{msg['text']}"""st.markdown(card_html, unsafe_allow_html=True)if "initial_load_done" in st.session_state:display_feed()
+line_color = get_channel_color(msg['sender'])
+# Формуємо HTML-карткуcard_html = f"""
+👤 {msg['sender']}
+🕒 {msg['time']}
+{msg['text']}
+"""
+st.markdown(card_html, unsafe_allow_html=True)
+if "initial_load_done" in st.session_state:
+display_feed()
