@@ -192,7 +192,7 @@ def clean_old_server_history():
     now = datetime.datetime.now(timezone.utc)
     cutoff_time = now - datetime.timedelta(hours=MAX_HISTORY_HOURS)
     global_state["history_buffer"] = [
-        item for item in global_state["history_buffer"] if item[0] >= cutoff_time
+        item for item in global_state["history_buffer"] if item >= cutoff_time
     ]
 
 # --- РОБОЧИЙ ПОТОК TELEGRAM ---
@@ -233,7 +233,7 @@ def start_telegram_worker():
         all_messages.sort(key=lambda m: m.date or time_limit)
         
         # Кеш для унікальності
-        existing_texts = set(item[1]["text"] for item in global_state["history_buffer"])
+        existing_texts = set(item["text"] for item in global_state["history_buffer"])
         
         for msg in all_messages:
             formatted = await process_and_enqueue(msg)
@@ -261,7 +261,7 @@ start_telegram_worker()
 # --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
 if "initial_load_done" not in st.session_state:
     if global_state["history_ready"]:
-        st.session_state.msg_store = [item[1] for item in global_state["history_buffer"]]
+        st.session_state.msg_store = [item for item in global_state["history_buffer"]]
         st.session_state.initial_load_done = True
     else:
         st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
@@ -292,19 +292,24 @@ def display_feed():
             break
             
     if not st.session_state.msg_store:
-    st.markdown("📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...", unsafe_allow_html=True)
+        st.markdown("<div class='empty-state'>📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...</div>", unsafe_allow_html=True)
         return
-        # Рендеринг повідомлень у вигляді кастомних HTML-карток
-        for msg in reversed(st.session_state.msg_store):
-            line_color = get_channel_color(msg['sender'])
-            # Формуємо HTML-код картки
-        card_html = f''
-        f''
-        f'👤 {msg["sender"]}'
-        f'🕒 {msg["time"]}'
-        f''
-        f'{msg["text"]}'
-        f''
+
+    # Рендеринг повідомлень у вигляді кастомних HTML-карток
+    for msg in reversed(st.session_state.msg_store):
+        line_color = get_channel_color(msg['sender'])
+        
+        # Створюємо чистий f-рядок
+        card_html = f"""
+        <div class="msg-card" style="border-left: 4px solid {line_color};">
+            <div class="msg-header">
+                <span class="msg-author" style="color: {line_color};">&#128100; {msg['sender']}</span>
+                <span class="msg-time">&#128338; {msg['time']}</span>
+            </div>
+            <div class="msg-body">{msg['text']}</div>
+        </div>
+        """
         st.markdown(card_html, unsafe_allow_html=True)
-        if "initial_load_done" in st.session_state:
-            display_feed()
+
+if "initial_load_done" in st.session_state:
+    display_feed()
