@@ -8,6 +8,14 @@ import streamlit as st
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
+# Спроба імпортувати zoneinfo для точного визначення київського часу з урахуванням літа/зими
+try:
+    from zoneinfo import ZoneInfo
+    KYIV_TZ = ZoneInfo("Europe/Kyiv")
+except Exception:
+    # Надійний бекап: якщо zoneinfo не підтримується, ставимо фіксований київський літній час UTC+3
+    KYIV_TZ = timezone(datetime.timedelta(hours=3))
+
 # =====================================================================
 # НАЛАШТУВАННЯ ЗАСТОСУНКУ (Ваші 9 чатів)
 # =====================================================================
@@ -53,7 +61,6 @@ class AutoCleanupQueue(queue.Queue):
         self.global_set.add(self)
 
     def __del__(self):
-        # Коли вкладку закривають і сесія видаляється, Python автоматично викличе цей метод
         try:
             self.global_set.discard(self)
         except Exception:
@@ -64,7 +71,6 @@ if "msg_store" not in st.session_state:
     st.session_state.msg_store = []
 
 if "user_queue" not in st.session_state:
-    # Створюємо чергу, яка сама видалить себе з глобального списку при закритті вкладки
     st.session_state.user_queue = AutoCleanupQueue(global_state["active_queues"])
 
 # --- ФУНКЦІЯ ОЧИЩЕННЯ ТЕКСТУ ВІД ПОСИЛАНЬ ---
@@ -94,10 +100,12 @@ async def process_and_enqueue(event_or_message):
         
     msg_date = event_or_message.date
     if msg_date:
-        local_time = msg_date.astimezone()
+        # ПРИМУСОВО переводимо час Telegram в часовий пояс Києва
+        local_time = msg_date.astimezone(KYIV_TZ)
         time_str = local_time.strftime("%H:%M:%S")
     else:
-        time_str = datetime.datetime.now().strftime("%H:%M:%S")
+        # Для нових повідомлень, якщо немає дати, беремо поточний час у Києві
+        time_str = datetime.datetime.now(KYIV_TZ).strftime("%H:%M:%S")
         
     return f"👤 **Від:** {sender_name} | 🕒 *{time_str}*\n\n💬 {cleaned_message}"
 
@@ -105,8 +113,6 @@ async def process_and_enqueue(event_or_message):
 def clean_old_server_history():
     now = datetime.datetime.now(timezone.utc)
     cutoff_time = now - datetime.timedelta(hours=MAX_HISTORY_HOURS)
-    
-    # Залишаємо в буфері лише ті повідомлення, які свіжіші за вказаний ліміт годин
     global_state["history_buffer"] = [
         item for item in global_state["history_buffer"] if item[0] >= cutoff_time
     ]
@@ -116,25 +122,20 @@ def clean_old_server_history():
 def start_telegram_worker():
     client = TelegramClient(SESSION_DATA, API_ID, API_HASH)
 
-    # Обробник нових повідомлень
     @client.on(events.NewMessage(chats=TARGET_CHATS))
     async def handle_new_message(event):
         full_text = await process_and_enqueue(event)
         if full_text:
             now = datetime.datetime.now(timezone.utc)
-            
-            # Додаємо в глобальний буфер разом із міткою часу
             global_state["history_buffer"].append((now, full_text))
-            clean_old_server_history() # Очищаємо старі пости
+            clean_old_server_history()
             
-            # Розсилаємо всім активним користувачам
             for q in list(global_state["active_queues"]):
                 try:
                     q.put(full_text)
                 except Exception:
                     continue
 
-    # Складання стартової історії
     async def preload_history():
         time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(minutes=30)
         all_messages = []
@@ -153,7 +154,6 @@ def start_telegram_worker():
             formatted = await process_and_enqueue(msg)
             msg_date = msg.date or time_limit
             if formatted:
-                # Перевіряємо, чи немає копії тексту
                 if not any(item[1] == formatted for item in global_state["history_buffer"]):
                     global_state["history_buffer"].append((msg_date, formatted))
                     
@@ -178,7 +178,6 @@ start_telegram_worker()
 # --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
 if "initial_load_done" not in st.session_state:
     if global_state["history_ready"]:
-        # Копіюємо користувачу лише тексти з буфера історії
         st.session_state.msg_store = [item[1] for item in global_state["history_buffer"]]
         st.session_state.initial_load_done = True
     else:
@@ -191,7 +190,7 @@ if st.button("🧹 Очистити мою стрічку"):
 
 st.write("---")
 
-# --- ВІДОБРАЖЕННЯ СТРІЧКИ (Оновлення кожні 2 секунди) ---
+# --- ВІДОБРАЖЕННЯ СТРІЧКИ ---
 @st.fragment(run_every=2)
 def display_feed():
     current_queue = st.session_state.user_queue
