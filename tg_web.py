@@ -303,4 +303,4 @@ f'{msg["text"]}'
 f''
 st.markdown(card_html, unsafe_allow_html=True)
 if "initial_load_done" in st.session_state:
-display_feed()
+    display_feed()
