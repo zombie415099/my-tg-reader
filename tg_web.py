@@ -21,7 +21,7 @@ TARGET_CHATS = [
 # =====================================================================
 
 st.set_page_config(page_title="TG Web Reader", page_icon="💬", layout="centered")
-st.title("📥 Збірка Всього По троху")
+st.title(" Збірка Всього По троху")
 
 if "TG_SESSION" in st.secrets:
     SESSION_DATA = StringSession(st.secrets["TG_SESSION"])
