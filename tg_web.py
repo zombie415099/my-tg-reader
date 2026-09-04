@@ -24,7 +24,7 @@ TARGET_CHATS = [
 MAX_HISTORY_HOURS = 3 
 # =====================================================================
 
-# Налаштування сторінки: встановлюємо нову назву для вкладки та іконку папки
+# Налаштування сторінки: встановлюємо назву для вкладки та іконку папки
 st.set_page_config(page_title="Збірка Всього Потроху", page_icon="📦", layout="wide")
 
 # Впровадження кастомного CSS для редизайну інтерфейсу
@@ -55,7 +55,7 @@ st.markdown("""
     /* Стильні картки повідомлень (імітація месенджера) */
     .msg-card {
         background-color: rgba(255, 255, 255, 0.05);
-        border-left: 4px solid #0088cc;
+        /* border-left задається динамічно через інлайн-стиль */
         padding: 15px 20px;
         border-radius: 4px 12px 12px 4px;
         margin-bottom: 14px;
@@ -105,7 +105,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Нова назва застосунку на сторінці
+# Назва застосунку на сторінці
 st.markdown("<h1 class='main-title'>📦 Збірка Всього Потроху</h1>", unsafe_allow_html=True)
 st.markdown("<p class='sub-title'>Агрегатор повідомлень та свіжих новин у реальному часі</p>", unsafe_allow_html=True)
 
@@ -144,6 +144,19 @@ if "msg_store" not in st.session_state:
 
 if "user_queue" not in st.session_state:
     st.session_state.user_queue = AutoCleanupQueue(global_state["active_queues"])
+
+# --- ФУНКЦІЯ АВТОМАТИЧНОЇ ГЕНЕРАЦІЇ СТАБІЛЬНОГО КОЛЬОРУ ДЛЯ КАНАЛУ ---
+def get_channel_color(name):
+    # Набір гарних яскравих та пастельних кольорів для ліній
+    colors = [
+        "#0088cc", "#2ecc71", "#9b59b6", "#e67e22", "#e74c3c", 
+        "#1abc9c", "#f1c40f", "#34495e", "#ff4757", "#20bf6b",
+        "#a55eea", "#fa8231", "#4b0082", "#00ced1", "#ff1493"
+    ]
+    # Вираховуємо простий числовий хэш на основі імені каналу
+    hash_value = sum(ord(char) for char in name)
+    # Повертаємо колір за залишком від ділення
+    return colors[hash_value % len(colors)]
 
 # --- ФУНКЦІЯ ОЧИЩЕННЯ ТЕКСТУ ВІД ПОСИЛАНЬ ---
 def clean_text(text):
@@ -184,7 +197,7 @@ def clean_old_server_history():
     now = datetime.datetime.now(timezone.utc)
     cutoff_time = now - datetime.timedelta(hours=MAX_HISTORY_HOURS)
     global_state["history_buffer"] = [
-        item for item in global_state["history_buffer"] if item[0] >= cutoff_time
+        item for item in global_state["history_buffer"] if item >= cutoff_time
     ]
 
 # --- РОБОЧИЙ ПОТОК TELEGRAM ---
@@ -207,7 +220,8 @@ def start_telegram_worker():
                     continue
 
     async def preload_history():
-        time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(minutes=30)
+        # Завантажуємо історію за 1 годину
+        time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(hours=1)
         all_messages = []
         
         for chat_id in TARGET_CHATS:
@@ -224,7 +238,7 @@ def start_telegram_worker():
             formatted = await process_and_enqueue(msg)
             msg_date = msg.date or time_limit
             if formatted:
-                if not any(item[1]["text"] == formatted["text"] for item in global_state["history_buffer"]):
+                if not any(item["text"] == formatted["text"] for item in global_state["history_buffer"]):
                     global_state["history_buffer"].append((msg_date, formatted))
                     
         global_state["history_ready"] = True
@@ -246,14 +260,14 @@ start_telegram_worker()
 # --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
 if "initial_load_done" not in st.session_state:
     if global_state["history_ready"]:
-        st.session_state.msg_store = [item[1] for item in global_state["history_buffer"]]
+        st.session_state.msg_store = [item for item in global_state["history_buffer"]]
         st.session_state.initial_load_done = True
     else:
         st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
         st.fragment(run_every=2)(lambda: st.rerun())()
 
 # Панель керування зверху
-col_info, col_btn = st.columns([4, 1], vertical_alignment="center")
+col_info, col_btn = st.columns(, vertical_alignment="center")
 with col_info:
     st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} год.")
 with col_btn:
@@ -279,19 +293,4 @@ def display_feed():
     if not st.session_state.msg_store:
         st.markdown("<div class='empty-state'>📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...</div>", unsafe_allow_html=True)
         return
-
-    # Рендеринг повідомлень у вигляді кастомних HTML-карток
-    for msg in reversed(st.session_state.msg_store):
-        card_html = f"""
-        <div class="msg-card">
-            <div class="msg-header">
-                <span class="msg-author">👤 {msg['sender']}</span>
-                <span class="msg-time">🕒 {msg['time']}</span>
-            </div>
-            <div class="msg-body">{msg['text']}</div>
-        </div>
-        """
-        st.markdown(card_html, unsafe_allow_html=True)
-
-if "initial_load_done" in st.session_state:
-    display_feed()
+# Рендеринг повідомлень у вигляді кастомних HTML-картокfor msg in reversed(st.session_state.msg_store):# Отримуємо стабільний колір індивідуально для кожного каналуline_color = get_channel_color(msg['sender'])# Застосовуємо динамічний колір до border-left та імені автораcard_html = f"""👤 {msg['sender']}🕒 {msg['time']}{msg['text']}"""st.markdown(card_html, unsafe_allow_html=True)if "initial_load_done" in st.session_state:display_feed()
