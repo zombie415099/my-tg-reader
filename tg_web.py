@@ -24,8 +24,8 @@ TARGET_CHATS = [
 MAX_HISTORY_HOURS = 3 
 # =====================================================================
 
-# Налаштування сторінки: додаємо сучасну іконку та широкий адаптивний макет
-st.set_page_config(page_title="Збірка Всього Потроху", page_icon="⚡", layout="wide")
+# Налаштування сторінки: встановлюємо нову назву для вкладки та іконку папки
+st.set_page_config(page_title="Збірка Всього Потроху", page_icon="📦", layout="wide")
 
 # Впровадження кастомного CSS для редизайну інтерфейсу
 st.markdown("""
@@ -105,9 +105,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Нова структура верхньої панелі (Header)
-st.markdown("<h1 class='main-title'>⚡ TG Web Reader</h1>", unsafe_allow_html=True)
-st.markdown("<p class='sub-title'>Розумний агрегатор новин та повідомлень у реальному часі</p>", unsafe_allow_html=True)
+# Нова назва застосунку на сторінці
+st.markdown("<h1 class='main-title'>📦 Збірка Всього Потроху</h1>", unsafe_allow_html=True)
+st.markdown("<p class='sub-title'>Агрегатор повідомлень та свіжих новин у реальному часі</p>", unsafe_allow_html=True)
 
 if "TG_SESSION" in st.secrets:
     SESSION_DATA = StringSession(st.secrets["TG_SESSION"])
@@ -249,11 +249,11 @@ if "initial_load_done" not in st.session_state:
         st.session_state.msg_store = [item[1] for item in global_state["history_buffer"]]
         st.session_state.initial_load_done = True
     else:
-        st.info("⏳ Застосунок підключається та формує стрічку новин. Повідомлення з'являться за мить...")
+        st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
         st.fragment(run_every=2)(lambda: st.rerun())()
 
-# Створюємо зручну панель керування зверху
-col_info, col_btn = st.columns([3, 1], vertical_alignment="center")
+# Панель керування зверху
+col_info, col_btn = st.columns([4, 1], vertical_alignment="center")
 with col_info:
     st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} год.")
 with col_btn:
