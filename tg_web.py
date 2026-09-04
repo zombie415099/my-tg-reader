@@ -45,21 +45,27 @@ def get_global_state():
 
 global_state = get_global_state()
 
+# --- РОЗУМНА ЧЕРГА З АВТООЧИЩЕННЯМ ПРИ ЗАКРИТТІ ВКЛАДКИ ---
+class AutoCleanupQueue(queue.Queue):
+    def __init__(self, global_set):
+        super().__init__()
+        self.global_set = global_set
+        self.global_set.add(self)
+
+    def __del__(self):
+        # Коли вкладку закривають і сесія видаляється, Python автоматично викличе цей метод
+        try:
+            self.global_set.discard(self)
+        except Exception:
+            pass
+
 # --- ІНІЦІАЛІЗАЦІЯ ДЛЯ КОНКРЕТНОЇ ВКЛАДКИ КОРИСТУВАЧА ---
 if "msg_store" not in st.session_state:
     st.session_state.msg_store = []
 
-# Функція для видалення черги при закритті сесії
-def cleanup_user_queue():
-    if "user_queue" in st.session_state:
-        global_state["active_queues"].discard(st.session_state.user_queue)
-
 if "user_queue" not in st.session_state:
-    user_queue = queue.Queue()
-    st.session_state.user_queue = user_queue
-    global_state["active_queues"].add(user_queue)
-    # Реєструємо колбек: коли сесія користувача помре, Streamlit викличе очищення
-    st.on_session_ended(cleanup_user_queue)
+    # Створюємо чергу, яка сама видалить себе з глобального списку при закритті вкладки
+    st.session_state.user_queue = AutoCleanupQueue(global_state["active_queues"])
 
 # --- ФУНКЦІЯ ОЧИЩЕННЯ ТЕКСТУ ВІД ПОСИЛАНЬ ---
 def clean_text(text):
@@ -86,10 +92,8 @@ async def process_and_enqueue(event_or_message):
     if not cleaned_message:
         return None
         
-    # Додаємо час публікації до повідомлення (пункт 2, корисний бонус)
     msg_date = event_or_message.date
     if msg_date:
-        # Переводим в локальний час (Київ)
         local_time = msg_date.astimezone()
         time_str = local_time.strftime("%H:%M:%S")
     else:
@@ -119,13 +123,16 @@ def start_telegram_worker():
         if full_text:
             now = datetime.datetime.now(timezone.utc)
             
-            # Додаємо в глобальний буфер разом із міткою часу для подальшого очищення
+            # Додаємо в глобальний буфер разом із міткою часу
             global_state["history_buffer"].append((now, full_text))
             clean_old_server_history() # Очищаємо старі пости
             
             # Розсилаємо всім активним користувачам
             for q in list(global_state["active_queues"]):
-                q.put(full_text)
+                try:
+                    q.put(full_text)
+                except Exception:
+                    continue
 
     # Складання стартової історії
     async def preload_history():
