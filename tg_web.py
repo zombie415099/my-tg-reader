@@ -55,7 +55,6 @@ st.markdown("""
     /* Стильні картки повідомлень (імітація месенджера) */
     .msg-card {
         background-color: rgba(255, 255, 255, 0.05);
-        /* border-left задається динамічно через інлайн-стиль */
         padding: 15px 20px;
         border-radius: 4px 12px 12px 4px;
         margin-bottom: 14px;
@@ -78,7 +77,6 @@ st.markdown("""
     }
     .msg-author {
         font-weight: 700;
-        color: #00c6ff;
         font-size: 0.95rem;
     }
     .msg-time {
@@ -147,15 +145,12 @@ if "user_queue" not in st.session_state:
 
 # --- ФУНКЦІЯ АВТОМАТИЧНОЇ ГЕНЕРАЦІЇ СТАБІЛЬНОГО КОЛЬОРУ ДЛЯ КАНАЛУ ---
 def get_channel_color(name):
-    # Набір гарних яскравих та пастельних кольорів для ліній
     colors = [
         "#0088cc", "#2ecc71", "#9b59b6", "#e67e22", "#e74c3c", 
         "#1abc9c", "#f1c40f", "#34495e", "#ff4757", "#20bf6b",
         "#a55eea", "#fa8231", "#4b0082", "#00ced1", "#ff1493"
     ]
-    # Вираховуємо простий числовий хэш на основі імені каналу
     hash_value = sum(ord(char) for char in name)
-    # Повертаємо колір за залишком від ділення
     return colors[hash_value % len(colors)]
 
 # --- ФУНКЦІЯ ОЧИЩЕННЯ ТЕКСТУ ВІД ПОСИЛАНЬ ---
@@ -266,8 +261,8 @@ if "initial_load_done" not in st.session_state:
         st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
         st.fragment(run_every=2)(lambda: st.rerun())()
 
-# Панель керування зверху
-col_info, col_btn = st.columns(, vertical_alignment="center")
+# Панель керування зверху (Тут виправлено помилку з комою!)
+col_info, col_btn = st.columns([4, 1], vertical_alignment="center")
 with col_info:
     st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} год.")
 with col_btn:
@@ -293,4 +288,8 @@ def display_feed():
     if not st.session_state.msg_store:
         st.markdown("<div class='empty-state'>📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...</div>", unsafe_allow_html=True)
         return
-# Рендеринг повідомлень у вигляді кастомних HTML-картокfor msg in reversed(st.session_state.msg_store):# Отримуємо стабільний колір індивідуально для кожного каналуline_color = get_channel_color(msg['sender'])# Застосовуємо динамічний колір до border-left та імені автораcard_html = f"""👤 {msg['sender']}🕒 {msg['time']}{msg['text']}"""st.markdown(card_html, unsafe_allow_html=True)if "initial_load_done" in st.session_state:display_feed()
+
+    # Рендеринг повідомлень у вигляді кастомних HTML-карток
+    for msg in reversed(st.session_state.msg_store):
+        # Отримуємо стабільний колір індивідуально для кожного каналу
+line_color = get_channel_color(msg['sender'])# Застосовуємо динамічний колір до border-left та імені автораcard_html = f"""👤 {msg['sender']}🕒 {msg['time']}{msg['text']}"""st.markdown(card_html, unsafe_allow_html=True)if "initial_load_done" in st.session_state:display_feed()
