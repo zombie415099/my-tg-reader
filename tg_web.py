@@ -215,22 +215,24 @@ def start_telegram_worker():
                     continue
 
     async def preload_history():
-        # Оптимізовано: збираємо за останні 45 хвилин для прискорення
-        time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(minutes=45)
+        # НАДІЙНИЙ ПІДХІД: Фільтруємо історію за 1 годину безпосередньо у коді
+        time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(hours=1)
         all_messages = []
         
         for chat_id in TARGET_CHATS:
             try:
-                # Оптимізовано: зменшено ліміт до 15 повідомлень на чат, щоб Telegram не блокував швидкість
-                async for message in client.iter_messages(chat_id, limit=15, offset_date=time_limit, reverse=True):
+                # Беремо останні 15 повідомлень (без параметру offset_date, щоб уникнути багів Telegram)
+                async for message in client.iter_messages(chat_id, limit=15):
+                    # Залишаємо повідомлення лише якщо воно свіжіше за вказаний ліміт (1 година)
                     if message.date and message.date >= time_limit:
                         all_messages.append(message)
             except Exception:
                 continue
                 
+        # Сортуємо отримані повідомлення від старих до нових
         all_messages.sort(key=lambda m: m.date or time_limit)
         
-        # Швидке створення кешу унікальних текстів
+        # Кеш для унікальності
         existing_texts = set(item[1]["text"] for item in global_state["history_buffer"])
         
         for msg in all_messages:
@@ -290,7 +292,7 @@ def display_feed():
             break
             
     if not st.session_state.msg_store:
-        st.markdown("📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...", unsafe_allow_html=True)
+    st.markdown("📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...", unsafe_allow_html=True)
         return
         # Рендеринг повідомлень у вигляді кастомних HTML-карток
         for msg in reversed(st.session_state.msg_store):
