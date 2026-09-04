@@ -31,25 +31,25 @@ else:
     st.error("Помилка: Не знайдено секрет TG_SESSION в налаштуваннях Streamlit Cloud!")
     st.stop()
 
-# --- СЛОВНИК ДЛЯ РЕЄСТРАЦІЇ ПЕРСОНАЛЬНИХ ЧЕРГ КОРИСТУВАЧІВ ---
+# --- ГЛОБАЛЬНЕ СХОВИЩЕ ДЛЯ ВСІХ СЕСІЙ ---
 @st.cache_resource
 def get_global_state():
     return {
-        "active_queues": set(), # Множина всіх підключених черг користувачів
-        "client": None          # Тут зберігатиметься клієнт Telegram
+        "active_queues": set(),    # Усі черги користувачів «наживо»
+        "history_buffer": [],      # Сюди збережеться історія за 30 хв при старті
+        "history_ready": False     # Прапор готовності історії
     }
 
 global_state = get_global_state()
 
-# Ініціалізація індивідуального сховища повідомлень для поточної вкладки/пристрою
+# --- ІНІЦІАЛІЗАЦІЯ ДЛЯ КОНКРЕТНОЇ ВКЛАДКИ КОРИСТУВАЧА ---
 if "msg_store" not in st.session_state:
-    st.session_state.msg_store = ["🔄 Підключення... Завантажуємо свіжу історію за 30 хвилин..."]
+    st.session_state.msg_store = []
 
-# Створення унікальної черги для КОЖНОГО окремого пристрою/сесії
 if "user_queue" not in st.session_state:
     user_queue = queue.Queue()
     st.session_state.user_queue = user_queue
-    global_state["active_queues"].add(user_queue) # Реєструємо чергу в глобальному списку розсилки
+    global_state["active_queues"].add(user_queue)
 
 # --- ФУНКЦІЯ ОЧИЩЕННЯ ТЕКСТУ ВІД ПОСИЛАНЬ ---
 def clean_text(text):
@@ -61,7 +61,7 @@ def clean_text(text):
     text = re.sub(r'\n\s*\n+', '\n', text).strip()
     return text
 
-# Спільна функція форматування повідомлення
+# Форматування повідомлення
 async def process_and_enqueue(event_or_message):
     try:
         if hasattr(event_or_message, 'get_sender'):
@@ -78,24 +78,54 @@ async def process_and_enqueue(event_or_message):
         
     return f"**👤 Від:** {sender_name}\n\n💬 {cleaned_message}"
 
+# --- РОБОЧИЙ ПОТОК TELEGRAM ---
 @st.cache_resource
 def start_telegram_worker():
     client = TelegramClient(SESSION_DATA, API_ID, API_HASH)
-    global_state["client"] = client
 
+    # Обробник нових повідомлень (працює завжди наживо)
     @client.on(events.NewMessage(chats=TARGET_CHATS))
     async def handle_new_message(event):
         full_text = await process_and_enqueue(event)
         if full_text:
-            # НАДВАЖЛИВО: Дублюємо нове повідомлення в черги ВСІХ активних пристроїв
-            # Створюємо копію множини, щоб уникнути помилок під час ітерації
+            # Розсилаємо копію повідомлення ВСІМ активним користувачам
             for q in list(global_state["active_queues"]):
                 q.put(full_text)
+
+    # Функція збору історії (виконується ОДИН РАЗ безпечно всередині потоку Telethon)
+    async def preload_history():
+        time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(minutes=30)
+        all_messages = []
+        
+        for chat_id in TARGET_CHATS:
+            try:
+                # Використовуємо ліміт у 20 повідомлень на чат, щоб не отримати бан за флуд
+                async for message in client.iter_messages(chat_id, limit=20, offset_date=time_limit, reverse=True):
+                    if message.date and message.date >= time_limit:
+                        all_messages.append(message)
+            except Exception:
+                continue
+                
+        # Сортуємо від старіших до новіших
+        all_messages.sort(key=lambda m: m.date or time_limit)
+        
+        # Обробляємо та зберігаємо в глобальний буфер
+        for msg in all_messages:
+            formatted = await process_and_enqueue(msg)
+            if formatted and formatted not in global_state["history_buffer"]:
+                global_state["history_buffer"].append(formatted)
+                
+        global_state["history_ready"] = True
 
     def run_loop():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         client.start()
+        
+        # Крок 1: Спочатку завантажуємо історію в безпечному середовищі
+        loop.run_until_complete(preload_history())
+        
+        # Крок 2: Запускаємо постійне прослуховування нових повідомлень
         loop.run_until_complete(client.get_dialogs())
         loop.run_until_complete(client.run_until_disconnected())
 
@@ -103,74 +133,50 @@ def start_telegram_worker():
     thread.start()
     return client
 
-# Запуск фонового клієнта Telegram
+# Запуск фонового робота
 start_telegram_worker()
 
-# --- ФУНКЦІЯ ЗАВАНТАЖЕННЯ ІСТОРІЇ ПРИ ВХОДІ КОНКРЕТНОГО КОРИСТУВАЧА ---
-@st.cache_data(ttl=10) # Кешуємо запит на 10 секунд, щоб не спамити Telegram при перезавантаженні сторінки
-def fetch_history_from_tg():
-    client = global_state["client"]
-    if not client:
-        return []
-        
-    # Створюємо новий event loop для синхронного виклику асинхронного методу Telethon всередині Streamlit
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    async def get_history():
-        time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(minutes=30)
-        all_messages = []
-        for chat_id in TARGET_CHATS:
-            try:
-                async for message in client.iter_messages(chat_id, offset_date=time_limit, reverse=True):
-                    if message.date and message.date >= time_limit:
-                        all_messages.append(message)
-            except Exception:
-                continue
-        
-        all_messages.sort(key=lambda m: m.date or time_limit)
-        
-        processed_strings = []
-        for msg in all_messages:
-            text = loop.run_until_complete(process_and_enqueue(msg))
-            if text:
-                processed_strings.append(text)
-        return processed_strings
-
-    try:
-        return loop.run_until_complete(get_history())
-    finally:
-        loop.close()
-
-# Завантажуємо історію за останні 30 хвилин ТІЛЬКИ ОДИН РАЗ під час першого візиту цієї сесії
-if "history_loaded" not in st.session_state:
-    history_msgs = fetch_history_from_tg()
-    if history_msgs:
-        st.session_state.msg_store = history_msgs
+# --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
+if "initial_load_done" not in st.session_state:
+    # Якщо історія у фоновому потоці вже зібрана — копіюємо її користувачу
+    if global_state["history_ready"]:
+        st.session_state.msg_store = list(global_state["history_buffer"])
+        st.session_state.initial_load_done = True
     else:
-        st.session_state.msg_store = ["📭 За останні 30 хвилин повідомлень немає. Чекаємо на нові..."]
-    st.session_state.history_loaded = True
+        # Тимчасова плашка, поки фоновий потік викачує дані з Telegram (триває кілька секунд)
+        st.warning("⏳ Застосунок підключається та створює базу даних. Повідомлення з'являться протягом 5-10 секунд, зачекайте будь ласка...")
+        # Примусове оновлення сторінки через 3 секунди, щоб перевірити готовність
+        st.fragment(run_every=3)(lambda: st.rerun())()
 
-# Кнопка очищення очистить стрічку ТІЛЬКИ для поточного користувача
 if st.button("🧹 Очистити мою стрічку"):
-    st.session_state.msg_store = ["🧹 Стрічку очищено. Очікуємо нові пости..."]
+    st.session_state.msg_store = []
     st.rerun()
 
 st.write("---")
 
-# Стрічка оновлюється кожні 2 секунди автономно для кожного екрана
+# --- ВІДОБРАЖЕННЯ СТРІЧКИ (Оновлення кожні 2 секунди) ---
 @st.fragment(run_every=2)
 def display_feed():
     current_queue = st.session_state.user_queue
+    has_new = False
+    
+    # Вичитуємо нові повідомлення, якщо вони надійшли, поки користувач дивився на екран
     while not current_queue.empty():
         try:
             msg = current_queue.get_nowait()
             if msg not in st.session_state.msg_store:
                 st.session_state.msg_store.append(msg)
+                has_new = True
         except queue.Empty:
             break
             
+    if not st.session_state.msg_store:
+        st.info("📭 У стрічці немає повідомлень. Очікуємо нові публікації...")
+        return
+
+    # Виводимо повідомлення (нові зверху)
     for msg in reversed(st.session_state.msg_store):
         st.info(msg)
 
-display_feed()
+if "initial_load_done" in st.session_state:
+    display_feed()
