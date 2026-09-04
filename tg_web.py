@@ -25,7 +25,7 @@ MAX_HISTORY_HOURS = 3
 # =====================================================================
 
 # Налаштування сторінки: додаємо сучасну іконку та широкий адаптивний макет
-st.set_page_config(page_title="TG Web Reader", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Збірка Всього Потроху", page_icon="⚡", layout="wide")
 
 # Впровадження кастомного CSS для редизайну інтерфейсу
 st.markdown("""
