@@ -9,7 +9,7 @@ from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
 # =====================================================================
-# НАЛАШТУВАННЯ ЗАСТОСУНКУ (Ваші 9 чатів)
+# НАЛАШТУВАННЯ ЗАСТОСУНКУ (Ваші 11 чатів)
 # =====================================================================
 API_ID = 33419246
 API_HASH = 'c84604c332b20c91eb9be6d01d4bd1ae'
@@ -192,7 +192,7 @@ def clean_old_server_history():
     now = datetime.datetime.now(timezone.utc)
     cutoff_time = now - datetime.timedelta(hours=MAX_HISTORY_HOURS)
     global_state["history_buffer"] = [
-        item for item in global_state["history_buffer"] if item >= cutoff_time
+        item for item in global_state["history_buffer"] if item[0] >= cutoff_time
     ]
 
 # --- РОБОЧИЙ ПОТОК TELEGRAM ---
@@ -215,13 +215,14 @@ def start_telegram_worker():
                     continue
 
     async def preload_history():
-        # Завантажуємо історію за 1 годину
-        time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(hours=1)
+        # Оптимізовано: збираємо за останні 45 хвилин для прискорення
+        time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(minutes=45)
         all_messages = []
         
         for chat_id in TARGET_CHATS:
             try:
-                async for message in client.iter_messages(chat_id, limit=25, offset_date=time_limit, reverse=True):
+                # Оптимізовано: зменшено ліміт до 15 повідомлень на чат, щоб Telegram не блокував швидкість
+                async for message in client.iter_messages(chat_id, limit=15, offset_date=time_limit, reverse=True):
                     if message.date and message.date >= time_limit:
                         all_messages.append(message)
             except Exception:
@@ -229,12 +230,15 @@ def start_telegram_worker():
                 
         all_messages.sort(key=lambda m: m.date or time_limit)
         
+        # Швидке створення кешу унікальних текстів
+        existing_texts = set(item[1]["text"] for item in global_state["history_buffer"])
+        
         for msg in all_messages:
             formatted = await process_and_enqueue(msg)
             msg_date = msg.date or time_limit
-            if formatted:
-                if not any(item["text"] == formatted["text"] for item in global_state["history_buffer"]):
-                    global_state["history_buffer"].append((msg_date, formatted))
+            if formatted and formatted["text"] not in existing_texts:
+                global_state["history_buffer"].append((msg_date, formatted))
+                existing_texts.add(formatted["text"])
                     
         global_state["history_ready"] = True
 
@@ -255,7 +259,7 @@ start_telegram_worker()
 # --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
 if "initial_load_done" not in st.session_state:
     if global_state["history_ready"]:
-        st.session_state.msg_store = [item for item in global_state["history_buffer"]]
+        st.session_state.msg_store = [item[1] for item in global_state["history_buffer"]]
         st.session_state.initial_load_done = True
     else:
         st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
@@ -286,21 +290,19 @@ def display_feed():
             break
             
     if not st.session_state.msg_store:
-        st.markdown("<div class='empty-state'>📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...</div>", unsafe_allow_html=True)
+        st.markdown("📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...", unsafe_allow_html=True)
         return
-
-    # Рендеринг повідомлень у вигляді кастомних HTML-карток
-    for msg in reversed(st.session_state.msg_store):
-        line_color = get_channel_color(msg['sender'])
-        
-        # Формуємо HTML-код картки (емодзі замінено на безпечні HTML-коди)
-card_html = f''
-f''
-f'👤 {msg["sender"]}'
-f'🕒 {msg["time"]}'
-f''
-f'{msg["text"]}'
-f''
-st.markdown(card_html, unsafe_allow_html=True)
-if "initial_load_done" in st.session_state:
-    display_feed()
+        # Рендеринг повідомлень у вигляді кастомних HTML-карток
+        for msg in reversed(st.session_state.msg_store):
+            line_color = get_channel_color(msg['sender'])
+            # Формуємо HTML-код картки
+        card_html = f''
+        f''
+        f'👤 {msg["sender"]}'
+        f'🕒 {msg["time"]}'
+        f''
+        f'{msg["text"]}'
+        f''
+        st.markdown(card_html, unsafe_allow_html=True)
+        if "initial_load_done" in st.session_state:
+            display_feed()
