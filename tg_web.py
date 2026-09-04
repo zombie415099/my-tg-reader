@@ -8,6 +8,12 @@ import streamlit as st
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
+# Для підтримки роботи з локальними часовими поясами
+try:
+    import zoneinfo
+except ImportError:
+    from backports import zoneinfo
+
 # =====================================================================
 # НАЛАШТУВАННЯ ЗАСТОСУНКУ (Ваші 11 чатів)
 # =====================================================================
@@ -142,7 +148,6 @@ if "msg_store" not in st.session_state:
 
 if "user_queue" not in st.session_state:
     st.session_state.user_queue = AutoCleanupQueue(global_state["active_queues"])
-
 # --- ФУНКЦІЯ АВТОМАТИЧНОЇ ГЕНЕРАЦІЇ СТАБІЛЬНОГО КОЛЬОРУ ДЛЯ КАНАЛУ ---
 def get_channel_color(name):
     colors = [
@@ -163,7 +168,7 @@ def clean_text(text):
     text = re.sub(r'\n\s*\n+', '\n', text).strip()
     return text
 
-# Повертаємо структурований словник замість сирого тексту
+# Повертаємо структурований словник із сирим datetime об'єктом (UTC)
 async def process_and_enqueue(event_or_message):
     try:
         if hasattr(event_or_message, 'get_sender'):
@@ -179,13 +184,10 @@ async def process_and_enqueue(event_or_message):
         return None
         
     msg_date = event_or_message.date
-    if msg_date:
-        local_time = msg_date.astimezone()
-        time_str = local_time.strftime("%H:%M:%S")
-    else:
-        time_str = datetime.datetime.now().strftime("%H:%M:%S")
+    if not msg_date:
+        msg_date = datetime.datetime.now(timezone.utc)
         
-    return {"sender": sender_name, "time": time_str, "text": cleaned_message}
+    return {"sender": sender_name, "raw_date": msg_date.astimezone(timezone.utc), "text": cleaned_message}
 
 # --- ФУНКЦІЯ ОЧИЩЕННЯ СТАРОЇ ІСТОРІЇ НА СЕРВЕРІ ---
 def clean_old_server_history():
@@ -229,7 +231,6 @@ def start_telegram_worker():
                 
         all_messages.sort(key=lambda m: m.date or time_limit)
         
-        # Безпечна фільтрація унікальності (захист від текстових залишків)
         existing_texts = set()
         for item in global_state["history_buffer"]:
             if isinstance(item, tuple) and len(item) > 1 and isinstance(item[1], dict) and "text" in item[1]:
@@ -261,7 +262,6 @@ start_telegram_worker()
 # --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
 if "initial_load_done" not in st.session_state:
     if global_state["history_ready"]:
-        # ФІЛЬТРАЦІЯ: беремо ТІЛЬКИ правильні словники нових повідомлень
         st.session_state.msg_store = [
             item[1] for item in global_state["history_buffer"] 
             if isinstance(item, tuple) and len(item) > 1 and isinstance(item[1], dict) and "sender" in item[1]
@@ -290,25 +290,40 @@ def display_feed():
     while not current_queue.empty():
         try:
             msg = current_queue.get_nowait()
-            if not any(existing_msg["text"] == msg["text"] for existing_msg in st.session_state.msg_store):
-                st.session_state.msg_store.append(msg)
+            if isinstance(msg, dict) and "text" in msg:
+                if not any(isinstance(em, dict) and em.get("text") == msg["text"] for em in st.session_state.msg_store):
+                    st.session_state.msg_store.append(msg)
         except queue.Empty:
             break
+            
+    st.session_state.msg_store = [m for m in st.session_state.msg_store if isinstance(m, dict) and "sender" in m]
             
     if not st.session_state.msg_store:
         st.markdown("<div class='empty-state'>📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...</div>", unsafe_allow_html=True)
         return
 
-    # Рендеринг повідомлень у вигляді кастомних HTML-карток
+    # Динамічно отримуємо часовий пояс користувача з його браузера
+    try:
+        user_tz_str = st.context.timezone or "Europe/Kyiv"
+        user_tz = zoneinfo.ZoneInfo(user_tz_str)
+    except Exception:
+        user_tz = zoneinfo.ZoneInfo("Europe/Kyiv")
+
+    # Рендеринг повідомлень
     for msg in reversed(st.session_state.msg_store):
         line_color = get_channel_color(msg['sender'])
         
-        # Створюємо чистий f-рядок
+        if "raw_date" in msg:
+            local_dt = msg["raw_date"].astimezone(user_tz)
+            time_str = local_dt.strftime("%H:%M:%S")
+        else:
+            time_str = datetime.datetime.now(user_tz).strftime("%H:%M:%S")
+        
         card_html = f"""
         <div class="msg-card" style="border-left: 4px solid {line_color};">
             <div class="msg-header">
                 <span class="msg-author" style="color: {line_color};">&#128100; {msg['sender']}</span>
-                <span class="msg-time">&#128338; {msg['time']}</span>
+                <span class="msg-time">&#128338; {time_str}</span>
             </div>
             <div class="msg-body">{msg['text']}</div>
         </div>
