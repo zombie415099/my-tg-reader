@@ -192,7 +192,8 @@ def clean_old_server_history():
     now = datetime.datetime.now(timezone.utc)
     cutoff_time = now - datetime.timedelta(hours=MAX_HISTORY_HOURS)
     global_state["history_buffer"] = [
-        item for item in global_state["history_buffer"] if item >= cutoff_time
+        item for item in global_state["history_buffer"] 
+        if isinstance(item, tuple) and len(item) > 1 and item[0] >= cutoff_time
     ]
 
 # --- РОБОЧИЙ ПОТОК TELEGRAM ---
@@ -215,25 +216,24 @@ def start_telegram_worker():
                     continue
 
     async def preload_history():
-        # НАДІЙНИЙ ПІДХІД: Фільтруємо історію за 1 годину безпосередньо у коді
         time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(hours=1)
         all_messages = []
         
         for chat_id in TARGET_CHATS:
             try:
-                # Беремо останні 15 повідомлень (без параметру offset_date, щоб уникнути багів Telegram)
                 async for message in client.iter_messages(chat_id, limit=15):
-                    # Залишаємо повідомлення лише якщо воно свіжіше за вказаний ліміт (1 година)
                     if message.date and message.date >= time_limit:
                         all_messages.append(message)
             except Exception:
                 continue
                 
-        # Сортуємо отримані повідомлення від старих до нових
         all_messages.sort(key=lambda m: m.date or time_limit)
         
-        # Кеш для унікальності
-        existing_texts = set(item["text"] for item in global_state["history_buffer"])
+        # Безпечна фільтрація унікальності (захист від текстових залишків)
+        existing_texts = set()
+        for item in global_state["history_buffer"]:
+            if isinstance(item, tuple) and len(item) > 1 and isinstance(item[1], dict) and "text" in item[1]:
+                existing_texts.add(item[1]["text"])
         
         for msg in all_messages:
             formatted = await process_and_enqueue(msg)
@@ -261,7 +261,11 @@ start_telegram_worker()
 # --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
 if "initial_load_done" not in st.session_state:
     if global_state["history_ready"]:
-        st.session_state.msg_store = [item for item in global_state["history_buffer"]]
+        # ФІЛЬТРАЦІЯ: беремо ТІЛЬКИ правильні словники нових повідомлень
+        st.session_state.msg_store = [
+            item[1] for item in global_state["history_buffer"] 
+            if isinstance(item, tuple) and len(item) > 1 and isinstance(item[1], dict) and "sender" in item[1]
+        ]
         st.session_state.initial_load_done = True
     else:
         st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
