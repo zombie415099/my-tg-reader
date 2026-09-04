@@ -262,9 +262,9 @@ if "initial_load_done" not in st.session_state:
         st.fragment(run_every=2)(lambda: st.rerun())()
 
 # Панель керування зверху
-col_info, col_btn = st.columns([4, 1], vertical_alignment="center")
+col_info, col_btn = st.columns(, vertical_alignment="center")
 with col_info:
-    st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} год.")
+    st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} god.")
 with col_btn:
     if st.button("🧹 Очистити стрічку", use_container_width=True):
         st.session_state.msg_store = []
@@ -293,5 +293,4 @@ def display_feed():
     for msg in reversed(st.session_state.msg_store):
         # Отримуємо стабільний колір індивідуально для кожного каналу
         line_color = get_channel_color(msg['sender'])
-        
-# Формуємо HTML-карткуcard_html = f"""👤 {msg['sender']}🕒 {msg['time']}{msg['text']}"""st.markdown(card_html, unsafe_allow_html=True)if "initial_load_done" in st.session_state:display_feed()
+        # Формуємо HTML-карткуcard_html = f"""👤 {msg['sender']}🕒 {msg['time']}{msg['text']}"""st.markdown(card_html, unsafe_allow_html=True)if "initial_load_done" in st.session_state:display_feed()
