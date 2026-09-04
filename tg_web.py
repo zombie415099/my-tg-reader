@@ -20,17 +20,23 @@ TARGET_CHATS = [
     -1002783917373, -1001777491812, -1001823047630,
     -1001679424866, -1001855211672,
 ]
+
+MAX_HISTORY_HOURS = 3 
 # =====================================================================
 
+# Налаштування сторінки: встановлюємо нову назву для вкладки та іконку папки
 st.set_page_config(page_title="Збірка Всього Потроху", page_icon="📦", layout="wide")
 
-# Впровадження CSS (додано стилі для бічного меню та адаптивності)
+# Впровадження кастомного CSS для редизайну інтерфейсу
 st.markdown("""
     <style>
+    /* Стилізація головного контейнера */
     .main .block-container {
         padding-top: 2rem;
         max-width: 900px;
     }
+    
+    /* Красивий заголовок з градієнтом */
     .main-title {
         font-family: 'Inter', sans-serif;
         font-weight: 800;
@@ -45,6 +51,8 @@ st.markdown("""
         font-size: 0.95rem;
         margin-bottom: 25px;
     }
+    
+    /* Стильні картки повідомлень (імітація месенджера) */
     .msg-card {
         background-color: rgba(255, 255, 255, 0.05);
         border-left: 4px solid #0088cc;
@@ -58,6 +66,8 @@ st.markdown("""
         background-color: rgba(255, 255, 255, 0.08);
         transform: translateX(2px);
     }
+    
+    /* Шапка повідомлення (Автор та Час) */
     .msg-header {
         display: flex;
         justify-content: space-between;
@@ -76,11 +86,15 @@ st.markdown("""
         font-size: 0.8rem;
         font-style: italic;
     }
+    
+    /* Текст повідомлення */
     .msg-body {
         font-size: 1rem;
         line-height: 1.5;
         white-space: pre-wrap;
     }
+    
+    /* Повідомлення про порожню стрічку */
     .empty-state {
         text-align: center;
         padding: 40px;
@@ -91,20 +105,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Назва застосунку на сторінці
 st.markdown("<h1 class='main-title'>📦 Збірка Всього Потроху</h1>", unsafe_allow_html=True)
 st.markdown("<p class='sub-title'>Агрегатор повідомлень та свіжих новин у реальному часі</p>", unsafe_allow_html=True)
-
-# --- БІЧНА ПАНЕЛЬ КЕРУВАННЯ (ЗМІНИ З ПУНКТУ 1) ---
-st.sidebar.markdown("### ⚙️ Налаштування стрічки")
-
-# Пошук за ключовими словами
-search_query = st.sidebar.text_input("🔍 Пошук за словом:", value="", placeholder="Введіть текст для фільтрації...")
-
-# Динамічний повзунок для керування часом зберігання історії
-max_history_hours = st.sidebar.slider("🕒 Глибина історії (годин):", min_value=1, max_value=12, value=3, step=1)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📡 Фільтр джерел")
 
 if "TG_SESSION" in st.secrets:
     SESSION_DATA = StringSession(st.secrets["TG_SESSION"])
@@ -142,6 +145,7 @@ if "msg_store" not in st.session_state:
 if "user_queue" not in st.session_state:
     st.session_state.user_queue = AutoCleanupQueue(global_state["active_queues"])
 
+# --- ФУНКЦІЯ ОЧИЩЕННЯ ТЕКСТУ ВІД ПОСИЛАНЬ ---
 def clean_text(text):
     if not text:
         return ""
@@ -151,6 +155,7 @@ def clean_text(text):
     text = re.sub(r'\n\s*\n+', '\n', text).strip()
     return text
 
+# Повертаємо структурований словник замість сирого тексту
 async def process_and_enqueue(event_or_message):
     try:
         if hasattr(event_or_message, 'get_sender'):
@@ -174,10 +179,10 @@ async def process_and_enqueue(event_or_message):
         
     return {"sender": sender_name, "time": time_str, "text": cleaned_message}
 
+# --- ФУНКЦІЯ ОЧИЩЕННЯ СТАРОЇ ІСТОРІЇ НА СЕРВЕРІ ---
 def clean_old_server_history():
     now = datetime.datetime.now(timezone.utc)
-    # Використовуємо динамічне значення повзунка з бокового меню
-    cutoff_time = now - datetime.timedelta(hours=max_history_hours)
+    cutoff_time = now - datetime.timedelta(hours=MAX_HISTORY_HOURS)
     global_state["history_buffer"] = [
         item for item in global_state["history_buffer"] if item[0] >= cutoff_time
     ]
@@ -247,31 +252,18 @@ if "initial_load_done" not in st.session_state:
         st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
         st.fragment(run_every=2)(lambda: st.rerun())()
 
-# Збір унікальних назв усіх доступних на цей момент каналів для фільтрації
-existing_channels = sorted(list(set(msg["sender"] for msg in st.session_state.msg_store if "sender" in msg)))
-
-# Якщо канали вже є в базі, виводимо чекбокси для їхнього вибору
-selected_channels = []
-if existing_channels:
-    st.sidebar.caption("Оберіть канали для відображення:")
-    for channel in existing_channels:
-        if st.sidebar.checkbox(channel, value=True):
-            selected_channels.append(channel)
-else:
-    st.sidebar.info("⏳ Список каналів оновиться після завантаження перших повідомлень...")
-
-# Верхня панель керування
-col_info, col_btn = st.columns([3, 1], vertical_alignment="center")
+# Панель керування зверху
+col_info, col_btn = st.columns([4, 1], vertical_alignment="center")
 with col_info:
-    st.caption(f"📡 Автооновлення стрічки: кожні 2 сек. Активний ліміт буфера: {max_history_hours} год.")
+    st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} год.")
 with col_btn:
-    if st.button("🧹 Очистити мою стрічку", use_container_width=True):
+    if st.button("🧹 Очистити стрічку", use_container_width=True):
         st.session_state.msg_store = []
         st.rerun()
 
 st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
 
-# --- ВІДОБРАЖЕННЯ СТРІЧКИ З ФІЛЬТРАЦІЄЮ ---
+# --- ВІДОБРАЖЕННЯ СТРІЧКИ (Оновлення кожні 2 секунди) ---
 @st.fragment(run_every=2)
 def display_feed():
     current_queue = st.session_state.user_queue
@@ -287,4 +279,19 @@ def display_feed():
     if not st.session_state.msg_store:
         st.markdown("<div class='empty-state'>📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...</div>", unsafe_allow_html=True)
         return
-# Фільтрація повідомлень за обраними каналами та пошуковим запитомfiltered_store = []for msg in st.session_state.msg_store:# 1. Перевірка фільтра каналів (якщо фільтр активний)if existing_channels and msg["sender"] not in selected_channels:continue# 2. Перевірка пошукового запитуif search_query and search_query.lower() not in msg["text"].lower() and search_query.lower() not in msg["sender"].lower():continuefiltered_store.append(msg)if not filtered_store:st.markdown("🔍 Нічого не знайдено за вказаними фільтрами чи запитом пошуку.", unsafe_allow_html=True)return# Рендеринг відфільтрованих картокfor msg in reversed(filtered_store):card_html = f"""👤 {msg['sender']}🕒 {msg['time']}{msg['text']}"""st.markdown(card_html, unsafe_allow_html=True)if "initial_load_done" in st.session_state:display_feed()
+
+    # Рендеринг повідомлень у вигляді кастомних HTML-карток
+    for msg in reversed(st.session_state.msg_store):
+        card_html = f"""
+        <div class="msg-card">
+            <div class="msg-header">
+                <span class="msg-author">👤 {msg['sender']}</span>
+                <span class="msg-time">🕒 {msg['time']}</span>
+            </div>
+            <div class="msg-body">{msg['text']}</div>
+        </div>
+        """
+        st.markdown(card_html, unsafe_allow_html=True)
+
+if "initial_load_done" in st.session_state:
+    display_feed()
