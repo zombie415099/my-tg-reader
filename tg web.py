@@ -17,8 +17,15 @@ except ImportError:
 # =====================================================================
 # НАЛАШТУВАННЯ ЗАСТОСУНКУ (Ваші 11 чатів)
 # =====================================================================
-API_ID = int(st.secrets["API_ID"])
-API_HASH = st.secrets["API_HASH"]
+import os
+
+# Зчитуємо змінні з Railway або зі secrets
+API_ID = int(os.environ.get("API_ID") or st.secrets.get("API_ID", 33419246))
+API_HASH = os.environ.get("API_HASH") or st.secrets.get("API_HASH", "c84604c332b20c91eb9be6d01d4bd1ae")
+
+# Знайдіть у коді нижче, де зчитується TG_SESSION (якщо воно там є), або просто додайте цей рядок сюди:
+TG_SESSION = os.environ.get("TG_SESSION") or st.secrets.get("TG_SESSION")
+
 
 TARGET_CHATS = [  
     -1002486466109, -1001681084215,
