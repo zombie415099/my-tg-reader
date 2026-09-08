@@ -122,7 +122,8 @@ st.markdown("<h1 class='main-title'>📦 Збірка Всього Потрох�
 st.markdown("<p class='sub-title'>Агрегатор повідомлень та свіжих новин у реальному часі</p>", unsafe_allow_html=True)
 
 if TG_SESSION:
-    SESSION_DATA = StringSession(st.secrets["TG_SESSION"])
+    SESSION_DATA = StringSession(TG_SESSION)
+
 else:
     st.error("Помилка: Не знайдено секрет TG_SESSION в налаштуваннях Streamlit Cloud!")
     st.stop()
