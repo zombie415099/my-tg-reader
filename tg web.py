@@ -254,7 +254,7 @@ def start_telegram_worker():
                     
         global_state["history_ready"] = True
 
-        def run_loop():
+    def run_loop():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
@@ -275,7 +275,7 @@ def start_telegram_worker():
     thread.start()
     return client
 
-# Присвоюємо результат функції змінній
+# Зверніть увагу: цей рядок стоїть на самому початку без відступів!
 client = start_telegram_worker()
 
 
