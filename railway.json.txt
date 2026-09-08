@@ -1,0 +1,9 @@
+{
+  "$schema": "https://railway.com",
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "streamlit run \"tg web.py\" --server.port $PORT --server.address 0.0.0.0"
+  }
+}
