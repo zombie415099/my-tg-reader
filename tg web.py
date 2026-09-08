@@ -254,19 +254,30 @@ def start_telegram_worker():
                     
         global_state["history_ready"] = True
 
-    def run_loop():
+        def run_loop():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        client.start()
-        loop.run_until_complete(preload_history())
-        loop.run_until_complete(client.get_dialogs())
-        loop.run_until_complete(client.run_until_disconnected())
+        
+        try:
+            # Безпечний контекстний менеджер для захисту сесії
+            with client:
+                loop.run_until_complete(preload_history())
+                loop.run_until_complete(client.get_dialogs())
+                loop.run_until_complete(client.run_until_disconnected())
+        except Exception as e:
+            print(f"Помилка у робочому потоці Telegram: {e}")
+        finally:
+            if client.is_connected():
+                loop.run_until_complete(client.disconnect())
+            loop.close()
 
     thread = threading.Thread(target=run_loop, daemon=True)
     thread.start()
     return client
 
-start_telegram_worker()
+# Присвоюємо результат функції змінній
+client = start_telegram_worker()
+
 
 # --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
 if "initial_load_done" not in st.session_state:
