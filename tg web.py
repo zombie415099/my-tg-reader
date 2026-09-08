@@ -268,10 +268,14 @@ def start_telegram_worker():
                 loop.run_until_complete(client.run_until_disconnected())
         except Exception as e:
             print(f"Помилка у робочому потоці Telegram: {e}")
-        finally:
-            if client.is_connected():
-                loop.run_until_complete(client.disconnect())
-            loop.close()
+            finally:
+            try:
+                if client.is_connected():
+                    loop.run_until_complete(client._disconnect())
+                loop.close()
+            except Exception:
+                pass
+
 
     thread = threading.Thread(target=run_loop, daemon=True)
     thread.start()
