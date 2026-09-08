@@ -261,14 +261,13 @@ def start_telegram_worker():
         asyncio.set_event_loop(loop)
         
         try:
-            # Безпечний контекстний менеджер для захисту сесії
             with client:
                 loop.run_until_complete(preload_history())
                 loop.run_until_complete(client.get_dialogs())
                 loop.run_until_complete(client.run_until_disconnected())
         except Exception as e:
             print(f"Помилка у робочому потоці Telegram: {e}")
-            finally:
+        finally:
             try:
                 if client.is_connected():
                     loop.run_until_complete(client._disconnect())
@@ -276,10 +275,10 @@ def start_telegram_worker():
             except Exception:
                 pass
 
-
     thread = threading.Thread(target=run_loop, daemon=True)
     thread.start()
     return client
+
 
 # Зверніть увагу: цей рядок стоїть на самому початку без відступів!
 client = start_telegram_worker()
