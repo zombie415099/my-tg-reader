@@ -180,14 +180,16 @@ def clean_text(text):
 # Повертаємо структурований словник із сирим datetime об'єктом (UTC)
 async def process_and_enqueue(event_or_message):
     try:
-        if hasattr(event_or_message, 'get_sender'):
-            sender = await event_or_message.get_sender()
+        # Побудовано спеціально для нових постів у каналах (підтягує реальну назву)
+        chat = await event_or_message.get_chat()
+        if chat and hasattr(chat, 'title'):
+            sender_name = chat.title
         else:
-            sender = event_or_message.sender
-        sender_name = getattr(sender, 'title', getattr(sender, 'first_name', 'Канал'))
+            sender = await event_or_message.get_sender()
+            sender_name = getattr(sender, 'title', getattr(sender, 'first_name', 'Канал'))
     except Exception:
         sender_name = "Канал"
-        
+
     cleaned_message = clean_text(event_or_message.text)
     if not cleaned_message:
         return None
