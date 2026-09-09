@@ -134,9 +134,7 @@ def get_global_state():
 
 global_state = get_global_state()
 
-st.sidebar.markdown("### 📊 Статус системи")
-st.sidebar.caption("📡 Оптимізовано під високе навантаження.")
-st.sidebar.caption("⏱️ Оновлення стрічки кожні 4 секунди.")
+
 # --- ФУНКЦІЯ АВТОМАТИЧНОЇ ГЕНЕРАЦІЇ СТАБІЛЬНОГО КОЛЬОРУ ДЛЯ КАНАЛУ ---
 def get_channel_color(name):
     colors = [
