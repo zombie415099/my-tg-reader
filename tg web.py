@@ -22,10 +22,7 @@ import os
 # Зчитуємо змінні з Railway або зі secrets
 API_ID = int(os.environ.get("API_ID") or st.secrets.get("API_ID", 33419246))
 API_HASH = os.environ.get("API_HASH") or st.secrets.get("API_HASH", "c84604c332b20c91eb9be6d01d4bd1ae")
-
-# Знайдіть у коді нижче, де зчитується TG_SESSION (якщо воно там є), або просто додайте цей рядок сюди:
 TG_SESSION = os.environ.get("TG_SESSION") or st.secrets.get("TG_SESSION")
-
 
 TARGET_CHATS = [  
     -1002486466109, -1001681084215,
@@ -123,40 +120,23 @@ st.markdown("<p class='sub-title'>Агрегатор повідомлень та
 
 if TG_SESSION:
     SESSION_DATA = StringSession(TG_SESSION)
-
 else:
-    st.error("Помилка: Не знайдено секрет TG_SESSION в налаштуваннях Streamlit Cloud!")
+    st.error("Помилка: Не знайдено секрет TG_SESSION!")
     st.stop()
 
 # --- ГЛОБАЛЬНЕ СХОВИЩЕ ДЛЯ ВСІХ СЕСІЙ ---
 @st.cache_resource
 def get_global_state():
     return {
-        "active_queues": set(),    
         "history_buffer": [],      
         "history_ready": False     
     }
 
 global_state = get_global_state()
 
-# --- РОЗУМНА ЧЕРГА З АВТООЧИЩЕННЯМ ---
-class AutoCleanupQueue(queue.Queue):
-    def __init__(self, global_set):
-        super().__init__()
-        self.global_set = global_set
-        self.global_set.add(self)
-
-    def __del__(self):
-        try:
-            self.global_set.discard(self)
-        except Exception:
-            pass
-
-if "msg_store" not in st.session_state:
-    st.session_state.msg_store = []
-
-if "user_queue" not in st.session_state:
-    st.session_state.user_queue = AutoCleanupQueue(global_state["active_queues"])
+st.sidebar.markdown("### 📊 Статус системи")
+st.sidebar.caption("📡 Оптимізовано під високе навантаження.")
+st.sidebar.caption("⏱️ Оновлення стрічки кожні 4 секунди.")
 # --- ФУНКЦІЯ АВТОМАТИЧНОЇ ГЕНЕРАЦІЇ СТАБІЛЬНОГО КОЛЬОРУ ДЛЯ КАНАЛУ ---
 def get_channel_color(name):
     colors = [
@@ -221,12 +201,6 @@ def start_telegram_worker():
             now = datetime.datetime.now(timezone.utc)
             global_state["history_buffer"].append((now, msg_data))
             clean_old_server_history()
-            
-            for q in list(global_state["active_queues"]):
-                try:
-                    q.put(msg_data)
-                except Exception:
-                    continue
 
     async def preload_history():
         time_limit = datetime.datetime.now(timezone.utc) - datetime.timedelta(hours=1)
@@ -279,51 +253,29 @@ def start_telegram_worker():
     thread.start()
     return client
 
-
-# Зверніть увагу: цей рядок стоїть на самому початку без відступів!
 client = start_telegram_worker()
 
+# --- ⏱️ СУПЕР-КЕШУВАННЯ СТРІЧКИ ДЛЯ 1000 КОРИСТУВАЧІВ ---
+# Зберігає готовий зліпок новин на 4 секунди у пам'яті. 
+# Завдяки цьому сервер не робить індивідуальні важкі запити для кожного відвідувача.
+@st.cache_data(ttl=4)
+def get_cached_news():
+    raw_history = list(global_state["history_buffer"])
+    # Сортування: найновіші повідомлення завжди відображаються зверху сторінки
+    raw_history.sort(key=lambda x: x[0] if isinstance(x, tuple) else datetime.datetime.now(timezone.utc), reverse=True)
+    return [item[1] for item in raw_history if isinstance(item, tuple) and len(item) > 1 and isinstance(item[1], dict)]
 
-# --- ЛОГІКА ПЕРШОГО ЗАХОДУ КОРИСТУВАЧА ---
-if "initial_load_done" not in st.session_state:
-    if global_state["history_ready"]:
-        st.session_state.msg_store = [
-            item[1] for item in global_state["history_buffer"] 
-            if isinstance(item, tuple) and len(item) > 1 and isinstance(item[1], dict) and "sender" in item[1]
-        ]
-        st.session_state.initial_load_done = True
-    else:
-        st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
-        st.fragment(run_every=2)(lambda: st.rerun())()
-
-# Панель керування зверху
-col_info, col_btn = st.columns([0.75, 0.25], vertical_alignment="center")
-with col_info:
-    st.caption(f"📡 Активний моніторинг чатів. Оновлення кожні 2 секунди. Буфер: {MAX_HISTORY_HOURS} год.")
-with col_btn:
-    if st.button("🧹 Очистити стрічку", use_container_width=True):
-        st.session_state.msg_store = []
-        st.rerun()
-
-st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
-
-# --- ВІДОБРАЖЕННЯ СТРІЧКИ (Оновлення кожні 2 секунди) ---
-@st.fragment(run_every=2)
+# --- ВІДОБРАЖЕННЯ СТРІЧКИ (Оновлення кожні 4 секунди) ---
+@st.fragment(run_every=4)
 def display_feed():
-    current_queue = st.session_state.user_queue
-    
-    while not current_queue.empty():
-        try:
-            msg = current_queue.get_nowait()
-            if isinstance(msg, dict) and "text" in msg:
-                if not any(isinstance(em, dict) and em.get("text") == msg["text"] for em in st.session_state.msg_store):
-                    st.session_state.msg_store.append(msg)
-        except queue.Empty:
-            break
+    if not global_state["history_ready"]:
+        st.info("⏳ «Збірка» підключається та формує стрічку новин. Повідомлення з'являться за мить...")
+        return
+
+    # Завантажуємо заморожену копію новин із кешу
+    news_feed = get_cached_news()
             
-    st.session_state.msg_store = [m for m in st.session_state.msg_store if isinstance(m, dict) and "sender" in m]
-            
-    if not st.session_state.msg_store:
+    if not news_feed:
         st.markdown("<div class='empty-state'>📭 У вашій стрічці поки що немає повідомлень. Очікуємо на нові публікації...</div>", unsafe_allow_html=True)
         return
 
@@ -335,7 +287,7 @@ def display_feed():
         user_tz = zoneinfo.ZoneInfo("Europe/Kyiv")
 
     # Рендеринг повідомлень
-    for msg in reversed(st.session_state.msg_store):
+    for msg in news_feed:
         line_color = get_channel_color(msg['sender'])
         
         if "raw_date" in msg:
@@ -355,5 +307,5 @@ def display_feed():
         """
         st.markdown(card_html, unsafe_allow_html=True)
 
-if "initial_load_done" in st.session_state:
-    display_feed()
+# Запуск відображення
+display_feed()
