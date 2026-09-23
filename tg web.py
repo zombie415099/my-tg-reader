@@ -112,11 +112,9 @@ async def startup_event():
 # --- ВЕБ-СТОРІНКА (ФРОНТЕНД) ---
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    # Сортуємо: нові зверху
     sorted_news = sorted(HISTORY_BUFFER, key=lambda x: x["raw_date"], reverse=True)
     user_tz = zoneinfo.ZoneInfo("Europe/Kyiv")
 
-    # Генеруємо картки новин
     cards_html = ""
     if not HISTORY_READY and not sorted_news:
         cards_html = "<div class='empty-state'>⏳ Завантаження новин, зачекайте кілька секунд... Сторінка оновиться автоматично.</div>"
@@ -136,7 +134,6 @@ async def read_root():
             </div>
             """
 
-    # Чистий, сучасний HTML-шаблон (дизайн один в один як був у вас)
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -145,7 +142,7 @@ async def read_root():
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Збірка Всього Потроху</title>
         {"<meta http-equiv='refresh' content='10'>" if not HISTORY_READY else ""}
-        <link href="https://googleapis.com" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet">
         <style>
             body {{ font-family: 'Inter', sans-serif; background-color: #0e1117; color: #ffffff; margin: 0; padding: 2rem 1rem; }}
             .container {{ max-width: 800px; margin: 0 auto; }}
