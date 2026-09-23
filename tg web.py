@@ -30,7 +30,7 @@ TARGET_CHATS = [
 
 MAX_HISTORY_HOURS = 3
 
-# Глобальне сховище новин у пам'яті сервера (заміна global_state із streamlit)
+# Глобальне сховище новин у пам'яті сервера
 HISTORY_BUFFER = []
 HISTORY_READY = False
 
@@ -112,11 +112,9 @@ async def startup_event():
 # --- ВЕБ-СТОРІНКА (ФРОНТЕНД) ---
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    # Сортуємо: нові зверху
     sorted_news = sorted(HISTORY_BUFFER, key=lambda x: x["raw_date"], reverse=True)
     user_tz = zoneinfo.ZoneInfo("Europe/Kyiv")
 
-    # Генеруємо картки новин
     cards_html = ""
     if not HISTORY_READY and not sorted_news:
         cards_html = "<div class='empty-state'>⏳ Завантаження новин, зачекайте кілька секунд... Сторінка оновиться автоматично.</div>"
@@ -136,7 +134,6 @@ async def read_root():
             </div>
             """
 
-    # Чистий, сучасний HTML-шаблон (дизайн один в один як був у вас)
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -170,11 +167,10 @@ async def read_root():
             </div>
         </div>
 
-        <!-- Цей скрипт автоматично оновлює сторінку кожні 4 секунди -->
         <script>
-            setTimeout(function(){
+            setTimeout(function(){{
                 window.location.reload();
-            }, 4000);
+            }}, 4000);
         </script>
     </body>
     </html>
