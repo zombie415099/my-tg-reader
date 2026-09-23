@@ -142,7 +142,7 @@ async def read_root():
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Збірка Всього Потроху</title>
         {"<meta http-equiv='refresh' content='10'>" if not HISTORY_READY else ""}
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet">
+        <link href="https://googleapis.com" rel="stylesheet">
         <style>
             body {{ font-family: 'Inter', sans-serif; background-color: #0e1117; color: #ffffff; margin: 0; padding: 2rem 1rem; }}
             .container {{ max-width: 800px; margin: 0 auto; }}
@@ -154,14 +154,12 @@ async def read_root():
             .msg-time {{ color: #888888; font-size: 0.8rem; font-style: italic; }}
             .msg-body {{ font-size: 1rem; line-height: 1.5; white-space: pre-wrap; }}
             .empty-state {{ text-align: center; padding: 40px; color: #888888; border: 2px dashed rgba(255, 255, 255, 0.1); border-radius: 12px; }}
-            .refresh-btn {{ background: #0088cc; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-bottom: 20px; }}
         </style>
     </head>
     <body>
         <div class="container">
             <h1 class="main-title">📦 Збірка Всього Потроху</h1>
             <p class="sub-title">Агрегатор повідомлень та свіжих новин у реальному часі</p>
-            <button class="refresh-btn" onclick="window.location.reload();">🔄 Оновити новини</button>
             <div id="feed">
                 {cards_html}
             </div>
