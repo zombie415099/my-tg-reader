@@ -169,8 +169,14 @@ async def read_root():
                 {cards_html}
             </div>
         </div>
+
+        <!-- Цей скрипт автоматично оновлює сторінку кожні 4 секунди -->
+        <script>
+            setTimeout(function(){
+                window.location.reload();
+            }, 4000);
+        </script>
     </body>
     </html>
     """
     return HTMLResponse(content=html_content, status_code=200)
-
