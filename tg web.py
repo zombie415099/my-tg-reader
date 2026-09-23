@@ -4,7 +4,7 @@ import re
 import datetime
 from datetime import timezone
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JsonResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -145,7 +145,7 @@ def generate_cards_html():
 # --- API ДЛЯ ОНОВЛЕННЯ ДАНИХ (БЕЗ ПЕРЕЗАВАНТАЖЕННЯ СТОРІНКИ) ---
 @app.get("/api/news")
 async def get_news_api():
-    return JsonResponse({"html": generate_cards_html()})
+    return JSONResponse({"html": generate_cards_html()})
 
 
 # --- ВЕБ-СТОРІНКА (ФРОНТЕНД) ---
