@@ -112,9 +112,11 @@ async def startup_event():
 # --- ВЕБ-СТОРІНКА (ФРОНТЕНД) ---
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
+    # Сортуємо: нові зверху
     sorted_news = sorted(HISTORY_BUFFER, key=lambda x: x["raw_date"], reverse=True)
     user_tz = zoneinfo.ZoneInfo("Europe/Kyiv")
 
+    # Генеруємо картки новин
     cards_html = ""
     if not HISTORY_READY and not sorted_news:
         cards_html = "<div class='empty-state'>⏳ Завантаження новин, зачекайте кілька секунд... Сторінка оновиться автоматично.</div>"
@@ -134,6 +136,7 @@ async def read_root():
             </div>
             """
 
+    # Чистий, сучасний HTML-шаблон (дизайн один в один як був у вас)
     html_content = f"""
     <!DOCTYPE html>
     <html>
